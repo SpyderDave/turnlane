@@ -1,0 +1,49 @@
+if [ "$Stage" == "release" ]; then
+  echo "---------------------------------------------------"
+  echo "Running Release Stage"
+  echo "---------------------------------------------------"
+  
+  if [[ -z $StackName ]]
+  then
+    echo "*** RELEASE ERROR *** Stackname needed."
+    exit 3
+  fi
+
+  if [[ ${SCEPTRE_VERSION:0:1} == "2" ]]
+  then
+    eval $(${sceptrecommand} --ignore-dependencies list outputs ${Environment}/${StackName} --export=envvar)
+    echo "RELEASE_VALUES="$RELEASE_VALUES
+    OIFS=$IFS 
+    IFS=',' read ELBDNS ELBZONEID TARGETRECORD <<< $RELEASE_VALUES
+    IFS=$OIFS
+    ELBDNS_VALUE=SCEPTRE_$ELBDNS
+    ELBZONEID_VALUE=SCEPTRE_$ELBZONEID
+    if [ ! -z $ELBDNS_VALUE ] && [ ! -z $ELBZONEID_VALUE ]
+    then 
+      echo "*** RELEASE PROCESS *** Creating json file for update."
+      cat >/tmp/release-update-route53-alias.json<<EOF
+{
+"Comment": "Turnlane release creating Alias resource record sets in Route 53",
+"Changes": [
+{
+    "Action": "UPSERT",
+    "ResourceRecordSet": {
+        "Name": "${TARGETRECORD}",
+        "Type": "A",
+        "AliasTarget":{
+            "HostedZoneId": "${ELBZONEID_VALUE}",
+            "DNSName": "${ELBDNS_VALUE}",
+            "EvaluateTargetHealth": false
+        }}
+    }]
+}
+EOF
+    else
+      echo "*** RELEASE ERROR *** Could not obtain values from stack."
+      exit 4
+    fi # End check values
+  else 
+    # Sceptre v1 code goes here.
+    echo "***RELEASE PROCESS*** Not implemented for sceptre v1"
+  fi # End check sceptre version
+fi # end check build stage
